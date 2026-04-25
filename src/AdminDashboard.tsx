@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { 
   LayoutDashboard, 
@@ -11,7 +11,7 @@ import {
   LogOut, 
   ChevronDown, 
   ChevronLeft,
-  ChevronRight,
+  ChevronRight, 
   Search, 
   BarChart3,
   Check,
@@ -22,7 +22,8 @@ import {
   RefreshCw,
   Loader2,
   Download,
-  Edit3
+  Edit3,
+  CheckCircle2
 } from 'lucide-react';
 import { cn } from './lib/utils';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -39,6 +40,37 @@ import FeedbackConcern from './components/FeedbackConcern';
 import PhilHealthFacilitation from './components/PhilHealthFacilitation';
 import IdIssuanceModule from './components/IdIssuanceModule';
 import { motion, AnimatePresence } from 'motion/react';
+
+import { 
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar,
+  PieChart, Pie, Cell, Legend
+} from 'recharts';
+
+interface DashboardStats {
+  registration: {
+    total: number;
+    pending: number;
+    approved: number;
+    disapproved: number;
+  };
+  masterlist: {
+    total: number;
+    active: number;
+    deceased: number;
+    released: number;
+  };
+  benefits: {
+    annualCashGift: number;
+    socialPension: number;
+    weddingIncentive: number;
+    birthdayIncentive: number;
+  };
+  feedback: {
+    total: number;
+    resolved: number;
+    pending: number;
+  };
+}
 
 export default function AdminDashboard({ 
   applications, 
@@ -57,6 +89,78 @@ export default function AdminDashboard({
   const [isLoading, setIsLoading] = useState(true);
   const [isRegistrationOpen, setIsRegistrationOpen] = useState(true);
   const [isIdIssuanceOpen, setIsIdIssuanceOpen] = useState(false);
+
+  const [stats, setStats] = useState<DashboardStats>({
+    registration: { total: 0, pending: 0, approved: 0, disapproved: 0 },
+    masterlist: { total: 0, active: 0, deceased: 0, released: 0 },
+    benefits: { annualCashGift: 0, socialPension: 0, weddingIncentive: 0, birthdayIncentive: 0 },
+    feedback: { total: 0, resolved: 0, pending: 0 }
+  });
+
+  const fetchDashboardStats = useCallback(async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const headers = { "Authorization": `Bearer ${token}`, "Accept": "application/json" };
+
+      // 1. Registration Stats (from applications prop/fetch)
+      const reg = {
+        total: applications.length,
+        pending: applications.filter(a => a.reg_status === 'pending').length,
+        approved: applications.filter(a => a.reg_status === 'approved').length,
+        disapproved: applications.filter(a => a.reg_status === 'disapproved' || a.reg_status === 'rejected').length
+      };
+
+      // 2. Masterlist Stats
+      const masterRes = await fetch("https://api-dbosca.phoenix.com.ph/api/masterlist", { headers });
+      const masterData = await masterRes.json();
+      const masterArray = masterData.data?.data || masterData.data || masterData || [];
+      const mStats = {
+        total: masterArray.length,
+        active: masterArray.filter((a: any) => (a.vital_status || 'active').toLowerCase() === 'active').length,
+        deceased: masterArray.filter((a: any) => (a.vital_status || '').toLowerCase() === 'deceased').length,
+        released: masterArray.filter((a: any) => (a.id_status || '').toLowerCase() === 'released').length
+      };
+
+      // 3. Benefit Stats
+      const annualRes = await fetch("https://api-dbosca.phoenix.com.ph/api/benefit-applications", { headers });
+      const annualData = await annualRes.json();
+      const annualCount = (annualData.data?.data || annualData.data || annualData || []).length;
+
+      const pensionRes = await fetch("https://api-dbosca.phoenix.com.ph/api/social-pension", { headers });
+      const pensionData = await pensionRes.json();
+      const pensionCount = (pensionData.data?.data || pensionData.data || pensionData || []).length;
+      
+      // Feedback Stats
+      const feedbackRes = await fetch("https://api-dbosca.phoenix.com.ph/api/feedback-concerns", { headers });
+      const feedbackData = await feedbackRes.json();
+      const feedbacks = feedbackData.data || [];
+      const fStats = {
+        total: feedbacks.length,
+        resolved: feedbacks.filter((f: any) => f.status === 'Resolved').length,
+        pending: feedbacks.filter((f: any) => f.status === 'Pending').length
+      };
+
+      setStats({
+        registration: reg,
+        masterlist: mStats,
+        benefits: {
+          annualCashGift: annualCount,
+          socialPension: pensionCount,
+          weddingIncentive: 0, // Placeholder
+          birthdayIncentive: 0 // Placeholder
+        },
+        feedback: fStats
+      });
+    } catch (error) {
+      console.error("Error fetching stats:", error);
+    }
+  }, [applications]);
+
+  useEffect(() => {
+    if (activeTab === 'Dashboard') {
+      fetchDashboardStats();
+    }
+  }, [activeTab, fetchDashboardStats]);
 
   useEffect(() => {
     const path = location.pathname;
@@ -1269,9 +1373,230 @@ export default function AdminDashboard({
         )}
 
         {activeTab === 'Dashboard' && (
-          <div className="flex flex-col items-center justify-center h-[60vh] text-slate-300">
-            <LayoutDashboard className="w-20 h-20 mb-4 opacity-20" />
-            <p className="text-xl font-bold uppercase tracking-widest opacity-20">Dashboard Overview Coming Soon</p>
+          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            <header className="mb-8">
+              <h2 className="text-3xl font-bold tracking-tight text-slate-900">Dashboard Overview</h2>
+              <p className="text-slate-500 font-medium mt-1">Live OSCA System Module Analytics</p>
+            </header>
+
+            {/* Quick Stats Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {[
+                { 
+                  title: 'Total Registrations', 
+                  value: stats.registration.total, 
+                  sub: `${stats.registration.pending} Pending Approval`, 
+                  icon: UserPlus, 
+                  color: 'text-blue-600', 
+                  bg: 'bg-blue-50' 
+                },
+                { 
+                  title: 'Masterlist Records', 
+                  value: stats.masterlist.total, 
+                  sub: `${stats.masterlist.released} IDs Released`, 
+                  icon: ClipboardList, 
+                  color: 'text-[#ef4444]', 
+                  bg: 'bg-red-50' 
+                },
+                { 
+                  title: 'Benefit Applications', 
+                  value: stats.benefits.annualCashGift + stats.benefits.socialPension, 
+                  sub: 'Total Service Requests', 
+                  icon: Heart, 
+                  color: 'text-rose-600', 
+                  bg: 'bg-rose-50' 
+                },
+                { 
+                  title: 'Citizen Feedbacks', 
+                  value: stats.feedback.total, 
+                  sub: `${stats.feedback.pending} Awaiting Response`, 
+                  icon: MessageSquare, 
+                  color: 'text-amber-600', 
+                  bg: 'bg-amber-50' 
+                },
+              ].map((stat, i) => (
+                <div key={i} className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm hover:shadow-md transition-all group">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className={cn("p-3 rounded-2xl transition-transform group-hover:scale-110", stat.bg)}>
+                      <stat.icon className={cn("w-6 h-6", stat.color)} />
+                    </div>
+                    <div className="flex items-center gap-1 text-emerald-600 font-bold text-xs bg-emerald-50 px-2 py-1 rounded-lg">
+                      <Check className="w-3 h-3" />
+                      Live
+                    </div>
+                  </div>
+                  <h3 className="text-3xl font-black text-slate-900 mb-1">{stat.value.toLocaleString()}</h3>
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{stat.title}</p>
+                  <div className="mt-4 pt-4 border-t border-slate-50">
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">{stat.sub}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Registration Breakdown */}
+              <div className="lg:col-span-2 bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm">
+                <div className="flex items-center justify-between mb-8">
+                  <h3 className="text-xl font-bold text-slate-900 tracking-tight">Registration Status Analytics</h3>
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-3 h-3 rounded-full bg-emerald-500" />
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">Approved</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-3 h-3 rounded-full bg-amber-500" />
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">Pending</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="h-[300px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={[
+                      { name: 'Approved', value: stats.registration.approved, fill: '#10b981' },
+                      { name: 'Pending', value: stats.registration.pending, fill: '#f59e0b' },
+                      { name: 'Rejected', value: stats.registration.disapproved, fill: '#ef4444' },
+                    ]}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 700, fill: '#94a3b8' }} />
+                      <Tooltip 
+                        contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                        itemStyle={{ fontSize: '12px', fontWeight: 'bold' }}
+                      />
+                      <Bar dataKey="value" radius={[8, 8, 0, 0]} barSize={60} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Masterlist Vitality */}
+              <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm flex flex-col">
+                <h3 className="text-xl font-bold text-slate-900 tracking-tight mb-8">Vitality Index</h3>
+                <div className="flex-1 flex items-center justify-center relative">
+                  <ResponsiveContainer width="100%" height={240}>
+                    <PieChart>
+                      <Pie
+                        data={[
+                          { name: 'Active', value: stats.masterlist.active, color: '#0ea5e9' },
+                          { name: 'Deceased', value: stats.masterlist.deceased, color: '#94a3b8' },
+                        ]}
+                        innerRadius={60}
+                        outerRadius={80}
+                        paddingAngle={5}
+                        dataKey="value"
+                      >
+                        {[
+                          { color: '#0ea5e9' },
+                          { color: '#94a3b8' },
+                        ].map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none translate-y-[-10px]">
+                    <span className="text-2xl font-black text-slate-900">{stats.masterlist.total}</span>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total</span>
+                  </div>
+                </div>
+                <div className="space-y-3 mt-4">
+                   <div className="flex items-center justify-between p-3 bg-blue-50 rounded-2xl">
+                      <div className="flex items-center gap-3">
+                         <div className="w-2 h-2 rounded-full bg-sky-500" />
+                         <span className="text-xs font-bold text-slate-700">Active Members</span>
+                      </div>
+                      <span className="text-xs font-black text-sky-600">{stats.masterlist.active}</span>
+                   </div>
+                   <div className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl">
+                      <div className="flex items-center gap-3">
+                         <div className="w-2 h-2 rounded-full bg-slate-400" />
+                         <span className="text-xs font-bold text-slate-700">Deceased Records</span>
+                      </div>
+                      <span className="text-xs font-black text-slate-500">{stats.masterlist.deceased}</span>
+                   </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Benefits & Feedback Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {/* Service Usage */}
+              <div className="bg-[#0F172A] p-8 rounded-[2.5rem] text-white shadow-xl shadow-slate-200">
+                <div className="flex items-center justify-between mb-8">
+                  <div>
+                    <h3 className="text-xl font-bold tracking-tight">System Service Requests</h3>
+                    <p className="text-slate-400 text-xs font-medium mt-1">Application volume for each benefit type</p>
+                  </div>
+                  <div className="p-3 bg-slate-800 rounded-2xl">
+                    <Heart className="w-6 h-6 text-rose-500" />
+                  </div>
+                </div>
+                
+                <div className="space-y-6">
+                  {[
+                    { label: 'Annual Cash Gift', value: stats.benefits.annualCashGift, color: 'bg-rose-500', total: Math.max(1, stats.benefits.annualCashGift + stats.benefits.socialPension) },
+                    { label: 'Social Pension (DSWD)', value: stats.benefits.socialPension, color: 'bg-blue-500', total: Math.max(1, stats.benefits.annualCashGift + stats.benefits.socialPension) },
+                  ].map((service, i) => (
+                    <div key={i}>
+                      <div className="flex justify-between mb-2">
+                        <span className="text-sm font-bold text-slate-200">{service.label}</span>
+                        <span className="text-sm font-black text-white">{service.value}</span>
+                      </div>
+                      <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden">
+                        <motion.div 
+                          initial={{ width: 0 }}
+                          animate={{ width: `${(service.value / service.total) * 100}%` }}
+                          transition={{ duration: 1, delay: 0.2 + (i * 0.1) }}
+                          className={cn("h-full rounded-full shadow-[0_0_8px_rgba(0,0,0,0.3)]", service.color)}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                
+                <button 
+                  onClick={() => handleTabChange('Benefits')}
+                  className="w-full mt-10 py-4 bg-white/10 hover:bg-white/20 rounded-2xl text-xs font-black text-white uppercase tracking-widest transition-all border border-white/10"
+                >
+                  Manage All Benefits
+                </button>
+              </div>
+
+              {/* Recent Feedback Feed */}
+              <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm">
+                <div className="flex items-center justify-between mb-8">
+                  <div>
+                    <h3 className="text-xl font-bold tracking-tight text-slate-900">Feedback Summary</h3>
+                    <p className="text-slate-500 text-xs font-medium mt-1">Communication monitoring</p>
+                  </div>
+                  <div className="px-4 py-2 bg-amber-50 rounded-xl text-amber-600 font-bold text-xs">
+                    {stats.feedback.pending} PENDING
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 h-full">
+                   <div className="flex flex-col items-center justify-center p-6 bg-slate-50 rounded-[2rem] border border-slate-100">
+                      <CheckCircle2 className="w-8 h-8 text-emerald-500 mb-2" />
+                      <span className="text-2xl font-black text-slate-900">{stats.feedback.resolved}</span>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Resolved</span>
+                   </div>
+                   <div className="flex flex-col items-center justify-center p-6 bg-slate-50 rounded-[2rem] border border-slate-100">
+                      <AlertCircle className="w-8 h-8 text-amber-500 mb-2" />
+                      <span className="text-2xl font-black text-slate-900">{stats.feedback.pending}</span>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Pending</span>
+                   </div>
+                </div>
+                
+                <button 
+                  onClick={() => handleTabChange('FeedbackConcern')}
+                  className="w-full mt-10 py-4 bg-slate-50 hover:bg-slate-100 rounded-2xl text-xs font-black text-slate-600 uppercase tracking-widest transition-all border border-slate-200"
+                >
+                  View Engagement Logs
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
