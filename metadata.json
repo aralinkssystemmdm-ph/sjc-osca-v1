@@ -1,0 +1,8 @@
+{
+  "name": "San Juan OSCA System 4/25 5pm Baron",
+  "description": "A centralized LGU platform for senior citizen welfare management, registration, and service delivery.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": []
+}
